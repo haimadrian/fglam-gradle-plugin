@@ -1,0 +1,68 @@
+buildscript {
+  ext {
+    artifactoryUrl = "https://artifactory.labs.quest.com/artifactory"
+
+    repos = {
+      maven {
+        url "${artifactoryUrl}/libs-release"
+        credentials {
+          username "$artifactoryUser"
+          password "$artifactoryAPIKey"
+        }
+      }
+    }
+  }
+  repositories repos
+
+  dependencies {
+    classpath group: 'com.quest.foglight', name: 'foglight-gradle-plugin', version: foglightGradlePluginVersion
+  }
+}
+
+plugins {
+  id "java"
+  id "idea"
+  id "eclipse"
+  id 'groovy'
+  id 'java-gradle-plugin'
+  id 'maven-publish'
+}
+
+apply plugin: 'com.quest.foglight'
+
+repositories repos
+
+group = 'com.quest.foglight.fglam'
+version = '0.1.5'
+
+java {
+  sourceCompatibility JavaVersion.VERSION_1_8
+  targetCompatibility JavaVersion.VERSION_1_8
+}
+
+idea {
+  module {
+    downloadSources = true
+  }
+}
+
+eclipse {
+  classpath {
+    downloadSources = true
+  }
+}
+
+dependencies {
+  compileOnly(gradleApi())
+  implementation group: 'com.quest.foglight', name: 'foglight-gradle-plugin', version: foglightGradlePluginVersion
+}
+
+gradlePlugin {
+  plugins {
+    fglamBuildPlugin {
+      id = 'com.quest.foglight.fglam'
+      implementationClass = 'com.quest.foglight.fglam.gradle.FglAMBuildPlugin'
+    }
+  }
+}
+
