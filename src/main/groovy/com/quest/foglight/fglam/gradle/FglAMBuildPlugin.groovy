@@ -1,6 +1,7 @@
 package com.quest.foglight.fglam.gradle
 
-
+import groovy.io.FileType
+import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
@@ -13,6 +14,7 @@ class FglAMBuildPlugin implements Plugin<Project> {
 
   @Override
   void apply(Project project) {
+    applyPlugins(project)
     configureFglAMVersionsExtension(project)
     configureFglAMExtension(project)
     configureAnt(project)
@@ -20,8 +22,28 @@ class FglAMBuildPlugin implements Plugin<Project> {
     configureGlueCoreDependency(project)
 
     createCopyDependenciesTask(project)
+    createGeneratePermissionsTask(project)
     setupJavaCompilerOptions(project)
     setupJarAndSourcesOptions(project)
+    setupTestOptions(project)
+  }
+
+  private static void applyPlugins(Project project) {
+    def applyPluginIfMissing = { String pluginName ->
+      if (!project.getPluginManager().hasPlugin(pluginName))
+        project.getPluginManager().apply(pluginName)
+    }
+
+    applyPluginIfMissing("application")
+    applyPluginIfMissing("base")
+    applyPluginIfMissing("java")
+    applyPluginIfMissing("java-library")
+    applyPluginIfMissing('maven-publish')
+
+    // Had to overcome foglight-gradle-plugin for unit tests.. It screws all tests with its setup
+    // and mandatory properties such as artifactoryUrl, User and APIKey.
+    if (System.getProperty('test') == null)
+      applyPluginIfMissing('com.quest.foglight')
   }
 
   private void configureFglAMVersionsExtension(Project project) {
@@ -65,7 +87,9 @@ class FglAMBuildPlugin implements Plugin<Project> {
 
         // Force certain versions of dependencies (including transitive)
         force "junit:junit:${fglamVersionsExtension.getJunitVersion()}",
-                "org.mockito:mockito-core:${fglamVersionsExtension.getMockitoVersion()}"
+            "org.mockito:mockito-core:${fglamVersionsExtension.getMockitoVersion()}",
+            "org.apache.logging.log4j:log4j-core:${fglamVersionsExtension.getLog4jVersion()}",
+            "org.apache.logging.log4j:log4j-api:${fglamVersionsExtension.getLog4jVersion()}"
       }
     }
   }
@@ -92,8 +116,9 @@ class FglAMBuildPlugin implements Plugin<Project> {
   }
 
   private void createCopyDependenciesTask(Project project) {
-    project.tasks.register('copyDependencies', Copy).configure {
+    project.tasks.register('copyDependencies', Copy).configure {t ->
       group 'build'
+      description "Copy runtimeClasspath to ${project.buildDir}/${fglamExtension.getDependenciesOutDir()} directory"
       from project.configurations.runtimeClasspath
       into "${project.buildDir}/${fglamExtension.getDependenciesOutDir()}"
       include "*.jar"
@@ -115,43 +140,108 @@ class FglAMBuildPlugin implements Plugin<Project> {
   }
 
   private void setupJarAndSourcesOptions(Project project) {
-    project.afterEvaluate {
-      project.tasks.named('sourcesJar').configure {
-        classifier = 'sources'
-        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-        manifest {
-          attributes(
-                  'Implementation-Title': project.name,
-                  'Implementation-Version': project.version,
-                  'Implementation-Vendor': fglamExtension.getVendor(),
-                  'Built-By': System.properties['user.name'],
-                  'Build-Timestamp': FglAMPluginExtension.getBuildISO8601DateTime(),
-                  'Created-By': "Gradle ${project.gradle.gradleVersion}",
-                  'Build-Jdk': "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
-                  'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}"
-          )
-        }
-        from project.sourceSets.main.allJava
-      }
+    project.java {
+      sourceCompatibility JavaVersion.VERSION_1_8
+      targetCompatibility JavaVersion.VERSION_1_8
+      withSourcesJar()
+    }
 
-      project.tasks.named('jar').configure {
-        dependsOn 'classes'
-        destinationDirectory = project.file("${project.projectDir}/dist")
-        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-        manifest {
-          attributes(
-                  'Implementation-Title': project.name,
-                  'Implementation-Version': project.version,
-                  'Implementation-Vendor': fglamExtension.getVendor(),
-                  'Built-By': System.properties['user.name'],
-                  'Build-Timestamp': FglAMPluginExtension.getBuildISO8601DateTime(),
-                  'Created-By': "Gradle ${project.gradle.gradleVersion}",
-                  'Build-Jdk': "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
-                  'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}",
-                  'Class-Path': project.configurations.runtimeClasspath.collect { it.getName() }.join(' ')
-          )
+    project.tasks.named('sourcesJar').configure {t ->
+      classifier = 'sources'
+      duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+      manifest {
+        attributes(
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version,
+            'Implementation-Vendor': fglamExtension.getVendor(),
+            'Built-By': System.properties['user.name'],
+            'Build-Timestamp': FglAMPluginExtension.getBuildISO8601DateTime(),
+            'Created-By': "Gradle ${project.gradle.gradleVersion}",
+            'Build-Jdk': "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
+            'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}"
+        )
+      }
+      from project.sourceSets.main.allJava
+    }
+
+    project.tasks.named('jar').configure {
+      dependsOn 'classes'
+      destinationDirectory = project.file("${project.projectDir}/dist")
+      duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+      manifest {
+        attributes(
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version,
+            'Implementation-Vendor': fglamExtension.getVendor(),
+            'Built-By': System.properties['user.name'],
+            'Build-Timestamp': FglAMPluginExtension.getBuildISO8601DateTime(),
+            'Created-By': "Gradle ${project.gradle.gradleVersion}",
+            'Build-Jdk': "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
+            'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}",
+            'Class-Path': project.configurations.runtimeClasspath.collect { it.getName() }.join(' ')
+        )
+      }
+    }
+  }
+
+  private void setupTestOptions(Project project) {
+    project.test {
+      useJUnitPlatform()
+      testLogging.showStandardStreams = true
+      failFast = false
+      maxHeapSize = "1024m"
+
+      reports {
+        junitXml {
+          outputPerTestCase = true
         }
       }
+    }
+  }
+
+  /**
+   * Create the <code>generatePermissions</code> task.<br/>
+   * This task responsible for reading all .PERMISSIONS files under resources directory, and generate
+   * the FGLAM_PERMISSIONS.MF file with their content.<br/>
+   * We also configure classes and compileJava tasks to depend on generatePermissions, thus making sure the permissions
+   * manifest is available for jar task.
+   * @param project A project to create the task at
+   */
+  private static void createGeneratePermissionsTask(Project project) {
+    project.tasks.register('generatePermissions').configure {t ->
+      group 'build'
+      description 'Generate FGLAM_PERMISSIONS.MF under META-INF, in case there are .PERMISSIONS files available under resources directory'
+      doFirst {
+        println 'Running generatePermissions task. If there are .PERMISSIONS files under resources dir, we will have FGLAM_PERMISSIONS.MF as output'
+      }
+      doLast {
+        def permissions = ''
+        new File(project.sourceSets.main.resources.srcDirs[0]).traverse(type: FileType.FILES, nameFilter: ~/.*.PERMISSIONS/) { file ->
+          permissions += file.text
+        }
+
+        if (!permissions.isEmpty()) {
+          def metaInfDir = new File("${project.sourceSets.main.resources.srcDirs[0]}/META-INF")
+          metaInfDir.mkdirs()
+          def permissionsManifest = new File(metaInfDir, 'FGLAM_PERMISSIONS.MF')
+          permissionsManifest.text = """Manifest-Version: 1.0
+Gradle-Version: Gradle ${project.gradle.gradleVersion}
+Created-By: ${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})
+""" + permissions
+
+          println "Generated ${permissionsManifest.toString()} file"
+        }
+
+        println 'Finished executing "generatePermissions" task'
+      }
+    }
+
+    project.tasks.named('classes').configure {t ->
+      dependsOn 'generatePermissions'
+    }
+
+    project.tasks.named('compileJava').configure { t ->
+      dependsOn 'generatePermissions'
     }
   }
 }
