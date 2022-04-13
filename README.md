@@ -23,6 +23,8 @@ Plugin is published to https://artifactory.labs.quest.com/ui/repos/tree/General/
         }
     }
 
+    apply plugin: 'com.quest.foglight.fglam'
+
 #### Customize extensions
 Those are the defaults
 
@@ -42,18 +44,20 @@ Those are the defaults
     }
 
 #### Use GartridgeTask to create .gar file
-    tasks.register('createCartridge', com.quest.foglight.fglam.gradle.GartridgeTask).configure {
+    tasks.register('createCartridge', com.quest.foglight.fglam.gradle.task.GartridgeTask).configure {
         group 'build'
         description 'Creates .gar file for this project'
         dependsOn tasks.jar
         inputs.file(tasks.jar.archiveFile)
-        outputs.file("${ant.properties['dist.dir']}/${cartridgeName}.gar")
+        outputs.file("${ant.properties['dist.dir']}/${garName}.gar")
 
-        carName = cartridgeName
-        carVersion = cartridgeVersion
-        outputDir = file(ant.properties['dist.dir'])
+        garName = 'DockerSwarmAgent'
+        agentManifest = "${project.buildDir}/tooling/agent.manifest"
+        agentLibDir = "${project.buildDir}/libs"
+        outputGarFile = file("${project.buildDir}/gar/${garName}.gar")
 
-        content() {
+        additionalContents() {
+            // If you have more filesets to add to the gar file
         }
 
         doFirst {

@@ -16,6 +16,7 @@ buildscript {
 
   dependencies {
     classpath group: 'com.quest.foglight', name: 'foglight-gradle-plugin', version: foglightGradlePluginVersion
+    classpath group: 'com.quest.foglight.ant', name: 'foglight-ant', version: foglightAntVersion
   }
 }
 
@@ -54,6 +55,14 @@ eclipse {
 
 dependencies {
   compileOnly(gradleApi())
+
+  // This is needed for com.quest.glue.tools.AgentCompiler, which is responsible for generating topology classes
+  implementation("com.quest.glue:gluetools:$fglamDevkitVersion")
+  implementation("com.quest.glue:glueapi:$fglamDevkitVersion")
+  implementation("com.quest.glue:gluecore:$fglamDevkitVersion")
+  implementation("com.quest.glue:gluecommon:$fglamDevkitVersion")
+  implementation("com.quest.foglight.ant:foglight-ant:$foglightAntVersion")
+
   implementation("com.quest.foglight:foglight-gradle-plugin:$foglightGradlePluginVersion")
 
   implementation(localGroovy())
