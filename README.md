@@ -43,13 +43,35 @@ Those are the defaults
         fglamVersion = '6.1.0'
     }
 
+#### Use GeneratorTask to generate topology classes
+This task relies on dev-kit installation. It will download and install it automatically. See `DevKitInstaller` class
+
+    tasks.register('generator', com.quest.foglight.fglam.gradle.task.GenerateTask).configure {
+        group 'build'
+        description 'Generate topology classes, callbacks, agent.manifest, etc. based on agent definitions'
+        dependsOn tasks.copyDependencies
+        inputs.dir("${project.buildDir}/downloaded/fglam") // devkit files
+        outputs.dir("${project.buildDir}/tooling") // generated sources
+
+        agentDefinition = file('agent-definition.xml')
+        runAllGenerators = true
+        
+        // Additional properties (Not sure AgentCompiler really relies on them, yet they are there for backward cmpatibiliy: GeneratorTask.*
+
+        toolingDirectory = dir("${project.buildDir}/tooling")
+
+        doFirst {
+            println "Generating sources and agent.manifest"
+        }
+    }
+
 #### Use GartridgeTask to create .gar file
-    tasks.register('createCartridge', com.quest.foglight.fglam.gradle.task.GartridgeTask).configure {
+    tasks.register('createGartridge', com.quest.foglight.fglam.gradle.task.GartridgeTask).configure {
         group 'build'
         description 'Creates .gar file for this project'
         dependsOn tasks.jar
         inputs.file(tasks.jar.archiveFile)
-        outputs.file("${ant.properties['dist.dir']}/${garName}.gar")
+        outputs.file("${project.buildDir}/gar/${garName}.gar")
 
         garName = 'DockerSwarmAgent'
         agentManifest = "${project.buildDir}/tooling/agent.manifest"
