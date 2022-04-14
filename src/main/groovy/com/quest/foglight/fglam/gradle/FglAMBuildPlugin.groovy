@@ -135,6 +135,12 @@ class FglAMBuildPlugin implements Plugin<Project> {
       include "*.jar"
       exclude "*-source*.jar"
       duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+      doLast {
+        new File("${project.buildDir}/${fglamExtension.getDependenciesOutDir()}".toString()).traverse(type: FileType.FILES, nameFilter: ~/commons-logging-apache\.jar/) { file ->
+          println "Deleting garbage file: $file"
+          file.delete()
+        }
+      }
     }
 
     project.tasks.named('classes').configure {
