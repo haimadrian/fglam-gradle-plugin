@@ -2,6 +2,7 @@ package com.quest.foglight.fglam.gradle.task
 
 import com.quest.foglight.fglam.gradle.DevKitInstaller
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Optional
@@ -134,6 +135,10 @@ class GeneratorTask extends DefaultTask {
         println "Running AgentCompiler with arguments: ${Arrays.toString(cmdArgs)}"
         def responseCode = com.quest.glue.tools.AgentCompiler.internalMain(cmdArgs)
         println "Response code of AgentCompiler is: $responseCode"
+
+        if (responseCode != 0) {
+            throw new GradleException("AgentCompiler failed to generate sources. Check console for more information. ResponseCode=$responseCode")
+        }
     }
 
     private void optionallyUpdateAgentDefinition() {

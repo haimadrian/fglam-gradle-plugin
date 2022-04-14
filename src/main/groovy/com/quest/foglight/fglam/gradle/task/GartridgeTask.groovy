@@ -2,6 +2,7 @@ package com.quest.foglight.fglam.gradle.task
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
@@ -28,7 +29,7 @@ class GartridgeTask extends DefaultTask {
 
     /** Where to find agent and 3rd party libraries. Defaults to <code>project.buildDir/libs</code> */
     @Optional
-    @InputFile
+    @InputDirectory
     File agentLibDir = new File(project.buildDir, 'libs')
 
     /** A reference to the output gar file that this task creates */
