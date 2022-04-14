@@ -1,14 +1,20 @@
-package com.quest.foglight.fglam.gradle
+package com.quest.foglight.fglam.gradle.plugin
 
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 
 import java.text.SimpleDateFormat
 
+/**
+ * Extension to let users to specify custom dependencies output directory, or modify vendor.
+ *
+ * @author Haim Adrian
+ * @since 13-Apr-2022
+ */
 class FglAMPluginExtension {
     private static final String BUILD_TIMESTAMP = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ").format(new Date())
 
-    /** Folder under project.buildDir to copy dependencies to */
+    /** Folder under project.buildDir to copy dependencies to. Default value is 'libs' */
     final Property<String> dependenciesOutDir
 
     /** The vendor of cartridges. (Quest Software Inc.) */
@@ -18,7 +24,7 @@ class FglAMPluginExtension {
         dependenciesOutDir = objects.property(String)
         vendor = objects.property(String)
 
-        dependenciesOutDir.set("jars")
+        dependenciesOutDir.set("libs")
         vendor.set("Quest Software Inc.")
     }
 

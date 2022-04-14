@@ -1,5 +1,7 @@
 package com.quest.foglight.fglam.gradle
 
+import com.quest.foglight.fglam.gradle.plugin.FglAMPluginExtension
+import com.quest.foglight.fglam.gradle.plugin.FglAMVersionsPluginExtension
 import groovy.io.FileType
 import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
@@ -8,6 +10,13 @@ import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.compile.JavaCompile
 
+/**
+ * A gradle plugin created for cartridge team development, to ease build, topology generation, and gar file creation.<br/>
+ * For more info and how-to, refer to the README.MD (main page on GitHub repository)
+ *
+ * @author Haim Adrian
+ * @since 13-Apr-2022
+ */
 class FglAMBuildPlugin implements Plugin<Project> {
   private FglAMVersionsPluginExtension fglamVersionsExtension
   private FglAMPluginExtension fglamExtension
@@ -26,6 +35,8 @@ class FglAMBuildPlugin implements Plugin<Project> {
     setupJavaCompilerOptions(project)
     setupJarAndSourcesOptions(project)
     setupTestOptions(project)
+
+    setupTasksDependenciesIfCreatingCartridge(project)
   }
 
   private static void applyPlugins(Project project) {
@@ -127,7 +138,7 @@ class FglAMBuildPlugin implements Plugin<Project> {
     }
 
     project.tasks.named('classes').configure {
-      dependsOn project.tasks.copyDependencies
+      dependsOn 'copyDependencies'
     }
   }
 
@@ -146,40 +157,46 @@ class FglAMBuildPlugin implements Plugin<Project> {
       withSourcesJar()
     }
 
-    project.tasks.named('sourcesJar').configure {t ->
-      classifier = 'sources'
-      duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-      manifest {
-        attributes(
-            'Implementation-Title': project.name,
-            'Implementation-Version': project.version,
-            'Implementation-Vendor': fglamExtension.getVendor(),
-            'Built-By': System.properties['user.name'],
-            'Build-Timestamp': FglAMPluginExtension.getBuildISO8601DateTime(),
-            'Created-By': "Gradle ${project.gradle.gradleVersion}",
-            'Build-Jdk': "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
-            'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}"
-        )
+    // Must be after evaluate because we access project.configurations.runtimeClasspath, so
+    // we need to access after user project is evaluated with its own dependencies.
+    // Otherwise we will make problem to the project uses us:
+    // Cannot change dependencies of dependency configuration ':apache-agent-trunk:implementation' after it has been included in dependency resolution
+    project.afterEvaluate {
+      project.tasks.named('sourcesJar').configure { t ->
+        classifier = 'sources'
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        manifest {
+          attributes(
+              'Implementation-Title': project.name,
+              'Implementation-Version': project.version,
+              'Implementation-Vendor': fglamExtension.getVendor(),
+              'Built-By': System.properties['user.name'],
+              'Build-Timestamp': FglAMPluginExtension.getBuildISO8601DateTime(),
+              'Created-By': "Gradle ${project.gradle.gradleVersion}",
+              'Build-Jdk': "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
+              'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}"
+          )
+        }
+        from project.sourceSets.main.allJava
       }
-      from project.sourceSets.main.allJava
-    }
 
-    project.tasks.named('jar').configure {
-      dependsOn 'classes'
-      destinationDirectory = project.file("${project.projectDir}/dist")
-      duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-      manifest {
-        attributes(
-            'Implementation-Title': project.name,
-            'Implementation-Version': project.version,
-            'Implementation-Vendor': fglamExtension.getVendor(),
-            'Built-By': System.properties['user.name'],
-            'Build-Timestamp': FglAMPluginExtension.getBuildISO8601DateTime(),
-            'Created-By': "Gradle ${project.gradle.gradleVersion}",
-            'Build-Jdk': "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
-            'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}",
-            'Class-Path': project.configurations.runtimeClasspath.collect { it.getName() }.join(' ')
-        )
+      project.tasks.named('jar').configure {
+        dependsOn 'classes'
+        destinationDirectory = project.file("${project.projectDir}/dist")
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        manifest {
+          attributes(
+              'Implementation-Title': project.name,
+              'Implementation-Version': project.version,
+              'Implementation-Vendor': fglamExtension.getVendor(),
+              'Built-By': System.properties['user.name'],
+              'Build-Timestamp': FglAMPluginExtension.getBuildISO8601DateTime(),
+              'Created-By': "Gradle ${project.gradle.gradleVersion}",
+              'Build-Jdk': "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
+              'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}",
+              'Class-Path': project.configurations.runtimeClasspath.collect { it.getName() }.join(' ')
+          )
+        }
       }
     }
   }
@@ -216,12 +233,12 @@ class FglAMBuildPlugin implements Plugin<Project> {
       }
       doLast {
         def permissions = ''
-        new File(project.sourceSets.main.resources.srcDirs[0]).traverse(type: FileType.FILES, nameFilter: ~/.*.PERMISSIONS/) { file ->
+        project.sourceSets.main.resources.srcDirs[0].traverse(type: FileType.FILES, nameFilter: ~/.*.PERMISSIONS/) { file ->
           permissions += file.text
         }
 
         if (!permissions.isEmpty()) {
-          def metaInfDir = new File("${project.sourceSets.main.resources.srcDirs[0]}/META-INF")
+          def metaInfDir = new File("${project.sourceSets.main.resources.srcDirs[0].getPath()}/META-INF")
           metaInfDir.mkdirs()
           def permissionsManifest = new File(metaInfDir, 'FGLAM_PERMISSIONS.MF')
           permissionsManifest.text = """Manifest-Version: 1.0
@@ -230,6 +247,8 @@ Created-By: ${System.properties['java.version']} (${System.properties['java.vend
 """ + permissions
 
           println "Generated ${permissionsManifest.toString()} file"
+        } else {
+          println "Could not find any .PERMISSIONS at: ${project.sourceSets.main.resources.srcDirs[0]}"
         }
 
         println 'Finished executing "generatePermissions" task'
@@ -242,6 +261,47 @@ Created-By: ${System.properties['java.version']} (${System.properties['java.vend
 
     project.tasks.named('compileJava').configure { t ->
       dependsOn 'generatePermissions'
+    }
+
+    project.afterEvaluate {
+      if (project.tasks.findByName('generateSources') != null) {
+        project.tasks.named('compileJava').configure {
+          dependsOn 'generateSources'
+        }
+
+        project.tasks.named('sourcesJar').configure {
+          dependsOn 'generateSources'
+        }
+
+        project.tasks.named('generateSources').configure {
+          dependsOn 'copyDependencies'
+          finalizedBy 'generatePermissions'
+        }
+      }
+
+      if (project.tasks.findByName('createGartridge') != null) {
+        project.tasks.named('createGartridge').configure {
+          dependsOn 'copyDependencies'
+        }
+      }
+    }
+  }
+
+  private static void setupTasksDependenciesIfCreatingCartridge(Project project) {
+    project.afterEvaluate {
+      if (project.tasks.findByName('createCartridge') != null) {
+        for (taskName in ['build', 'startScripts', 'distTar', 'distZip', 'generateMetadataFileForMavenJavaPublication']) {
+          project.tasks.named(taskName).configure {
+            dependsOn 'createCartridge'
+          }
+        }
+
+        project.tasks.named('publish').configure {
+          group 'publishing'
+          dependsOn 'createCartridge'
+          finalizedBy 'artifactoryPublish'
+        }
+      }
     }
   }
 }

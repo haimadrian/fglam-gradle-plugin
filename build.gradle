@@ -34,11 +34,12 @@ apply plugin: 'com.quest.foglight'
 repositories repos
 
 group = 'com.quest.foglight.fglam'
-version = '0.1.5'
+version = '1.0'
 
 java {
   sourceCompatibility JavaVersion.VERSION_1_8
   targetCompatibility JavaVersion.VERSION_1_8
+  withSourcesJar()
 }
 
 idea {
@@ -65,6 +66,11 @@ dependencies {
 
   implementation("com.quest.foglight:foglight-gradle-plugin:$foglightGradlePluginVersion")
 
+  implementation("com.quest.foglight.forge-common:quest-antlr:6.1.2") // Required by AgentCompiler (gluetools, quest-common)
+  implementation("org.antlr:stringtemplate:4.0.2") // Required by com.quest.glue.tools.compiler.topology.TopologyTemplateGenerator
+  implementation("com.sun.codemodel:codemodel:2.4") // Required by com.quest.glue.tools.compiler.CallbackCodeGenerator
+  implementation("com.sun.xml.bind:jaxb-ri:2.3.3") // Required by com.quest.glue.tools.compiler.AgentDefinitionWrapper
+
   implementation(localGroovy())
   testImplementation(platform('org.junit:junit-bom:5.8.2'))
   testImplementation('org.junit.jupiter:junit-jupiter')
@@ -84,5 +90,34 @@ test {
   testLogging {
     events "passed", "skipped", "failed"
   }
+}
+
+artifactory {
+  publish {
+    defaults {
+      publications {
+        mavenJava(MavenPublication) {
+          from components.groovy
+        }
+      }
+      properties = ['dev.team': 'cartridges', 'build.name': 'fglam-gradle-plugin']
+      publishBuildInfo = true
+      publishPom = true
+    }
+  }
+}
+
+// Just leave me be... It is complaining on the hack with LogCategory.. WTH
+checkstyle {
+  sourceSets = []
+}
+pmd {
+  sourceSets = []
+}
+
+tasks.named('publish').configure {
+  group 'publishing'
+  dependsOn tasks.build
+  finalizedBy 'artifactoryPublish'
 }
 

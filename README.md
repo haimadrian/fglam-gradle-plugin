@@ -5,6 +5,8 @@ Developed using Gradle 7.4.2
 
 Plugin is published to https://artifactory.labs.quest.com/ui/repos/tree/General/libs-release-local/com/quest/foglight/fglam
 
+Make sure you also apply foglight-gradle-plugin
+
 ### Usage
 #### Add our maven repo, and declare dependency
     buildscript {
@@ -19,10 +21,12 @@ Plugin is published to https://artifactory.labs.quest.com/ui/repos/tree/General/
         }
 
         dependencies {
+            classpath "com.quest.foglight:foglight-gradle-plugin:1.17"
             classpath "com.quest.foglight.fglam:fglam-gradle-plugin:1.0"
         }
     }
 
+    apply plugin: 'com.quest.foglight'
     apply plugin: 'com.quest.foglight.fglam'
 
 #### Customize extensions
@@ -38,27 +42,33 @@ Those are the defaults
         mockitoVersion = '4.3.1'
         junitJupiterVersion = '5.8.2'
         fglamDevkitVersion = '6.1.0-20211124'
+        fglamDevkitArchiveVersion = '6.1.0' // Devkit installation is for GeneratorTask
         fglamDevkitMockVersion = '5.7.1'
         fglamDevkitBranch = '6.1.0'
         fglamVersion = '6.1.0'
     }
 
 #### Use GeneratorTask to generate topology classes
-This task relies on dev-kit installation. It will download and install it automatically. See `DevKitInstaller` class
+This task relies on dev-kit installation. It will download and install it automatically. See `DevKitInstaller` class  
+Note that we also use foglight extension, so make sure you set-up `foglight.branch` property.
 
-    tasks.register('generator', com.quest.foglight.fglam.gradle.task.GenerateTask).configure {
+    foglight {
+        branch = '6.3.0'
+    }
+
+    tasks.register('generator', com.quest.foglight.fglam.gradle.task.GeneratorTask).configure {
         group 'build'
         description 'Generate topology classes, callbacks, agent.manifest, etc. based on agent definitions'
         dependsOn tasks.copyDependencies
-        inputs.dir("${project.buildDir}/downloaded/fglam") // devkit files
         outputs.dir("${project.buildDir}/tooling") // generated sources
 
-        agentDefinition = file('agent-definition.xml')
+        // The file will be copied and updated, to toolingDirectory. We also copy other files next to agent-definition.xml
+        agentDefinition = file('$configDir/agent-definition.xml') 
         runAllGenerators = true
         
         // Additional properties (Not sure AgentCompiler really relies on them, yet they are there for backward cmpatibiliy: GeneratorTask.*
 
-        toolingDirectory = dir("${project.buildDir}/tooling")
+        toolingDirectory = file("${project.buildDir}/tooling")
 
         doFirst {
             println "Generating sources and agent.manifest"
@@ -74,8 +84,8 @@ This task relies on dev-kit installation. It will download and install it automa
         outputs.file("${project.buildDir}/gar/${garName}.gar")
 
         garName = 'DockerSwarmAgent'
-        agentManifest = "${project.buildDir}/tooling/agent.manifest"
-        agentLibDir = "${project.buildDir}/libs"
+        agentManifest = file("${project.buildDir}/tooling/agent.manifest")
+        agentLibDir = file("${project.buildDir}/libs")
         outputGarFile = file("${project.buildDir}/gar/${garName}.gar")
 
         additionalContents() {
@@ -87,11 +97,22 @@ This task relies on dev-kit installation. It will download and install it automa
         }
     }
 
+#### Register generateSources task
+The plugin will set-up task dependencies automatically.  
+This way you are able to make `generator` task to be executed automatically.  
+Also, when the `fglam-gradle-plugin` finds `generateSources` task, it automatically configures `compileJava` to depend on `generateSources`, and finalizes `generateSources` by `generatePermissions`. Thus saving you task definitions
+
+    tasks.register('generateSources').configure {
+        dependsOn tasks.copyDependencies, 'generator'
+        group 'build'
+        outputs.dir("${project.buildDir}/tooling/java-gen")
+    }
+
 ### Some auto-settings
 * Java `sourceCompatibility` and `targetCompatibility` are set to `JavaVersion.VERSION_1_8`
 * Project is configured to create sources jar as well
 * Both jar and sources jar will have meaningful information in their manifest files. Jar's manifest will also include Class-Path.
-* There will be a `copyDependencies` task which copies runtimeClasspath of the project to `project.buildDir/fglam.dependenciesOutDir`
+* There will be a `copyDependencies` task which copies runtimeClasspath of the project to `project.buildDir/fglam.dependenciesOutDir` (default: build\libs)
 * Common dependencies will be declared for the project:
   * `implementation`: log4j-api and log4j-core
   * `compileOnly`: glueapi, gluecore, gluecommon, gluetools, glueapimockimpl

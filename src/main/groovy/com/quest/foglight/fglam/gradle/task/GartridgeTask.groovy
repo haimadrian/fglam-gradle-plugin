@@ -2,13 +2,16 @@ package com.quest.foglight.fglam.gradle.task
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 
 /**
  * A Gradle task used for creating a .gar file for Foglight agents.<br/>
  * The task expects agent-manifest to present. See {@link GeneratorTask} and {@link com.quest.glue.tools.compiler.manifest.ManifestGenerator}
+ *
  * @author Haim Adrian
  * @since 13-Apr-2022
  */
@@ -20,11 +23,12 @@ class GartridgeTask extends DefaultTask {
     String garName
 
     /** A reference to the agent-manifest file. (agent.manifest) */
-    @Input
+    @InputFile
     File agentManifest
 
     /** Where to find agent and 3rd party libraries. Defaults to <code>project.buildDir/libs</code> */
-    @Input
+    @Optional
+    @InputFile
     File agentLibDir = new File(project.buildDir, 'libs')
 
     /** A reference to the output gar file that this task creates */
@@ -69,7 +73,7 @@ class GartridgeTask extends DefaultTask {
         }
 
         def destFile = outputGarFile.getAbsolutePath()
-        println("Creating gar file at: $destFile")
+        println "Creating gar file at: $destFile"
         project.ant.tar(destfile: destFile, compression: "gzip") {
             tarfileset(dir: garLibDir.getParent())
 

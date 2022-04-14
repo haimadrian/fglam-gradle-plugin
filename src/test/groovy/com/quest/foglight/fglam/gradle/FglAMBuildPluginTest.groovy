@@ -2,6 +2,7 @@ package com.quest.foglight.fglam.gradle
 
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
+import org.gradle.api.internal.project.DefaultProject
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
@@ -11,6 +12,12 @@ import java.util.stream.Collectors
 
 import static org.junit.jupiter.api.Assertions.*
 
+/**
+ * Test {@link FglAMBuildPlugin} class
+ *
+ * @author Haim Adrian
+ * @since 13-Apr-2022
+ */
 class FglAMBuildPluginTest {
   private Project project
 
@@ -36,6 +43,9 @@ class FglAMBuildPluginTest {
     }
 
     project.getPluginManager().apply("com.quest.foglight.fglam")
+
+    // Call evaluate to make sure "project.afterEvaluate" is invoked. (For jar and sourcesJar tasks)
+    ((DefaultProject)project).evaluate()
   }
 
   @Test
@@ -46,7 +56,7 @@ class FglAMBuildPluginTest {
   @Test
   void testProjectHasDependencies() {
     def dependenciesName = () -> project.configurations.runtimeClasspath.resolve().stream().map(f -> f.toString().substring(f.toString().lastIndexOf(File.separator) + 1))
-    println('runtimeClasspath: ' + dependenciesName.call().collect(Collectors.toSet()))
+    println "runtimeClasspath: ${dependenciesName.call().collect(Collectors.toSet())}"
 
     def log4jCore = "log4j-core-${project.fglamVersions.getLog4jVersion()}.jar"
     def log4jApi = "log4j-api-${project.fglamVersions.getLog4jVersion()}.jar"
@@ -56,8 +66,8 @@ class FglAMBuildPluginTest {
 
   @Test
   void testProjectHasTasks() {
-    assertTrue(project.tasks.any(t -> t.name.equalsIgnoreCase('jar')), "jar task is missing")
-    assertTrue(project.tasks.any(t -> t.name.equalsIgnoreCase('sourcesJar')), "sourcesJar task is missing")
+    assertTrue(project.tasks.findByName('jar') != null, "jar task is missing")
+    assertTrue(project.tasks.findByName('sourcesJar') != null, "sourcesJar task is missing")
   }
 
   @Test
@@ -69,7 +79,7 @@ class FglAMBuildPluginTest {
   @Test
   void testJarTask_verifyManifest() {
     Map<String, String> manifestAttributes = project.tasks.named('jar').get().manifest.attributes
-    println(manifestAttributes)
+    println manifestAttributes
 
     manifestAttributesAssertions(manifestAttributes)
     assertTrue(manifestAttributes.containsKey('Class-Path'), 'Manifest entry is missing')
@@ -78,7 +88,7 @@ class FglAMBuildPluginTest {
   @Test
   void testSourcesJarTask_verifyManifest() {
     Map<String, String> manifestAttributes = project.tasks.named('sourcesJar').get().manifest.attributes
-    println(manifestAttributes)
+    println manifestAttributes
 
     manifestAttributesAssertions(manifestAttributes)
     assertFalse(manifestAttributes.containsKey('Class-Path'), 'Manifest entry should not exist in sources')
