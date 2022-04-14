@@ -233,8 +233,10 @@ class FglAMBuildPlugin implements Plugin<Project> {
       }
       doLast {
         def permissions = ''
-        project.sourceSets.main.resources.srcDirs[0].traverse(type: FileType.FILES, nameFilter: ~/.*.PERMISSIONS/) { file ->
-          permissions += file.text
+        if (project.sourceSets.main.resources.srcDirs[0].exists()) {
+          project.sourceSets.main.resources.srcDirs[0].traverse(type: FileType.FILES, nameFilter: ~/.*.PERMISSIONS/) { file ->
+            permissions += file.text
+          }
         }
 
         if (!permissions.isEmpty()) {
