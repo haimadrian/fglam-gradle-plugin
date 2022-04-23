@@ -1,5 +1,6 @@
 package com.quest.foglight.fglam.gradle.plugin
 
+import org.gradle.api.Project
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 
@@ -20,11 +21,17 @@ class FglAMPluginExtension {
     /** The vendor of cartridges. (Quest Software Inc.) */
     final Property<String> vendor
 
+    /** Folder under project.buildDir to copy output jar to. Default value is 'dist'.
+     * We do it so we can have an empty folder for archiving artifacts to Jenkins */
+    final Property<String> additionalJarOutputDir
+
     FglAMPluginExtension(ObjectFactory objects) {
         dependenciesOutDir = objects.property(String)
         vendor = objects.property(String)
+        additionalJarOutputDir = objects.property(String)
 
         dependenciesOutDir.set("libs")
+        additionalJarOutputDir.set("dist")
         vendor.set("Quest Software Inc.")
     }
 
@@ -34,12 +41,17 @@ class FglAMPluginExtension {
     }
 
     /** @see #dependenciesOutDir */
-    String getDependenciesOutDir() {
-        return dependenciesOutDir.get();
+    String getDependenciesOutDir(Project project) {
+        return "${project.buildDir}/${dependenciesOutDir.get()}".toString()
+    }
+
+    /** @see #additionalJarOutputDir */
+    String getAdditionalJarOutputDir(Project project) {
+        return "${project.buildDir}/${additionalJarOutputDir.get()}".toString()
     }
 
     /** @see #vendor */
     String getVendor() {
-        return vendor.get();
+        return vendor.get()
     }
 }

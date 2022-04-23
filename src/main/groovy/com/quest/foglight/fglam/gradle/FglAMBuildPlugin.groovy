@@ -7,6 +7,7 @@ import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.compile.JavaCompile
 
@@ -24,19 +25,21 @@ class FglAMBuildPlugin implements Plugin<Project> {
   @Override
   void apply(Project project) {
     applyPlugins(project)
+    configureIDE(project)
     configureFglAMVersionsExtension(project)
     configureFglAMExtension(project)
-    configureAnt(project)
     configureDependencyResolution(project)
-    configureGlueCoreDependency(project)
+    addCommonDependencies(project)
 
     createCopyDependenciesTask(project)
-    createGeneratePermissionsTask(project)
-    setupJavaCompilerOptions(project)
     setupJarAndSourcesOptions(project)
+    createGeneratePermissionsTask(project)
+    createGenerateSourcesTaskAndSetupTaskDependencies(project)
+    setupJavaCompilerOptions(project)
     setupTestOptions(project)
 
     setupTasksDependenciesIfCreatingCartridge(project)
+    disableUnusedTasks(project)
   }
 
   private static void applyPlugins(Project project) {
@@ -45,48 +48,63 @@ class FglAMBuildPlugin implements Plugin<Project> {
         project.getPluginManager().apply(pluginName)
     }
 
-    applyPluginIfMissing("application")
-    applyPluginIfMissing("base")
-    applyPluginIfMissing("java")
-    applyPluginIfMissing("java-library")
+    applyPluginIfMissing('application')
+    applyPluginIfMissing('base')
+    applyPluginIfMissing('java')
+    applyPluginIfMissing('java-library')
     applyPluginIfMissing('maven-publish')
+    applyPluginIfMissing('idea')
+    applyPluginIfMissing('eclipse')
 
     // Had to overcome foglight-gradle-plugin for unit tests.. It screws all tests with its setup
     // and mandatory properties such as artifactoryUrl, User and APIKey.
-    if (System.getProperty('test') == null)
+    if (System.getProperty('test') == null) {
       applyPluginIfMissing('com.quest.foglight')
+    }
+  }
+
+  private static void configureIDE(Project project) {
+    project.idea {
+      module {
+        downloadSources = true
+      }
+    }
+
+    project.eclipse {
+      classpath {
+        downloadSources = true
+      }
+    }
   }
 
   private void configureFglAMVersionsExtension(Project project) {
     fglamVersionsExtension = project.extensions.create('fglamVersions', FglAMVersionsPluginExtension)
 
-    project.properties.computeIfAbsent('log4jVersion', k -> fglamVersionsExtension.getLog4jVersion())
+    // Use project ext so it will be accessible through: project.X, project.ext.X, project.properties.X
+    project.ext {
+      // Common
+      log4jVersion = fglamVersionsExtension.getLog4jVersion()
 
-    // Test
-    project.properties.computeIfAbsent('junitVersion', k -> fglamVersionsExtension.getJunitVersion())
-    project.properties.computeIfAbsent('mockitoVersion', k -> fglamVersionsExtension.getMockitoVersion())
-    project.properties.computeIfAbsent('junitJupiterVersion', k -> fglamVersionsExtension.getJunitJupiterVersion())
+      // Test
+      junitVersion = fglamVersionsExtension.getJunitVersion()
+      mockitoVersion = fglamVersionsExtension.getMockitoVersion()
+      junitJupiterVersion = fglamVersionsExtension.getJunitJupiterVersion()
 
-    // Quest dependencies
-    project.properties.computeIfAbsent('fglamDevkitVersion', k -> fglamVersionsExtension.getFglamDevkitVersion())
-    project.properties.computeIfAbsent('fglamDevkitMockVersion', k -> fglamVersionsExtension.getFglamDevkitMockVersion())
-    project.properties.computeIfAbsent('fglamDevkitBranch', k -> fglamVersionsExtension.getFglamDevkitBranch())
-    project.properties.computeIfAbsent('fglamVersion', k -> fglamVersionsExtension.getFglamVersion())
+      // Quest dependencies
+      fglamDevkitVersion = fglamVersionsExtension.getFglamDevkitVersion()
+      fglamDevkitMockVersion = fglamVersionsExtension.getFglamDevkitMockVersion()
+      fglamDevkitBranch = fglamVersionsExtension.getFglamDevkitBranch()
+      fglamVersion = fglamVersionsExtension.getFglamVersion()
+    }
   }
 
   private void configureFglAMExtension(Project project) {
     fglamExtension = project.extensions.create('fglam', FglAMPluginExtension)
-  }
 
-  private static void configureAnt(Project project) {
-    project.beforeEvaluate {
-      // Ensure that ant INFO log messages are displayed
-      project.ant.lifecycleLogLevel = "INFO"
-
-      // Set some ant properties used to resolve references, etc.
-      project.ant.properties['artifactoryUrl'] = project.property("artifactoryUrl")
-      project.ant.properties['artifactoryUser'] = project.property("artifactoryUser")
-      project.ant.properties['artifactoryAPIKey'] = project.property("artifactoryAPIKey")
+    // Add some properties
+    project.ext {
+      distDir = "${project.buildDir}/dist".toString()
+      downloadsDir = "${project.buildDir}/downloaded".toString() // Used, yet not exposed, by foglight-gradle-plugin...
     }
   }
 
@@ -105,7 +123,7 @@ class FglAMBuildPlugin implements Plugin<Project> {
     }
   }
 
-  private void configureGlueCoreDependency(Project project) {
+  private void addCommonDependencies(Project project) {
     project.dependencies {
       implementation "org.apache.logging.log4j:log4j-core:${fglamVersionsExtension.getLog4jVersion()}"
       implementation "org.apache.logging.log4j:log4j-api:${fglamVersionsExtension.getLog4jVersion()}"
@@ -126,25 +144,35 @@ class FglAMBuildPlugin implements Plugin<Project> {
     }
   }
 
+  /**
+   * There is something that brings a corrupted jar file: commons-logging-apache.jar<br/>
+   * Delete this file as it should not be in use anyway. The correct library is: commons-logging-VERSION.jar
+   * @param directory Directory to look inside, recursively
+   */
+  private static void deleteGarbageIvyDependencies(File directory) {
+    if (directory.exists()) {
+      directory.traverse(type: FileType.FILES, nameFilter: ~/commons-logging-apache\.jar/) { file ->
+        println "Deleting garbage file: $file"
+        file.delete()
+      }
+    }
+  }
+
   private void createCopyDependenciesTask(Project project) {
     project.tasks.register('copyDependencies', Copy).configure {t ->
       group 'build'
-      description "Copy runtimeClasspath to ${project.buildDir}/${fglamExtension.getDependenciesOutDir()} directory"
+      description "Copy runtimeClasspath to ${fglamExtension.getDependenciesOutDir(project)} directory"
       from project.configurations.runtimeClasspath
-      into "${project.buildDir}/${fglamExtension.getDependenciesOutDir()}"
+      into fglamExtension.getDependenciesOutDir(project)
       include "*.jar"
       exclude "*-source*.jar"
       duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-      doLast {
-        new File("${project.buildDir}/${fglamExtension.getDependenciesOutDir()}".toString()).traverse(type: FileType.FILES, nameFilter: ~/commons-logging-apache\.jar/) { file ->
-          println "Deleting garbage file: $file"
-          file.delete()
-        }
+      doFirst {
+        deleteGarbageIvyDependencies(new File("${project.ext.downloadsDir}".toString()))
       }
-    }
-
-    project.tasks.named('classes').configure {
-      dependsOn 'copyDependencies'
+      doLast {
+        deleteGarbageIvyDependencies(new File(fglamExtension.getDependenciesOutDir(project)))
+      }
     }
   }
 
@@ -186,9 +214,9 @@ class FglAMBuildPlugin implements Plugin<Project> {
         from project.sourceSets.main.allJava
       }
 
-      project.tasks.named('jar').configure {
+      project.tasks.named('jar').configure {t ->
         dependsOn 'classes'
-        destinationDirectory = project.file("${project.projectDir}/dist")
+        destinationDirectory = project.file("${project.buildDir}/libs")
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         manifest {
           attributes(
@@ -202,6 +230,16 @@ class FglAMBuildPlugin implements Plugin<Project> {
               'Build-OS': "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}",
               'Class-Path': project.configurations.runtimeClasspath.collect { it.getName() }.join(' ')
           )
+        }
+        doFirst {
+          new File(project.ext.distDir).mkdirs()
+        }
+        doLast {
+          // Copy jar for ArchiveArtifacts task
+          project.copy {
+            from project.tasks.jar
+            into fglamExtension.getAdditionalJarOutputDir(project)
+          }
         }
       }
     }
@@ -262,52 +300,112 @@ Created-By: ${System.properties['java.version']} (${System.properties['java.vend
         println 'Finished executing "generatePermissions" task'
       }
     }
+  }
 
-    project.tasks.named('classes').configure {t ->
-      dependsOn 'generatePermissions'
+  private static void createGenerateSourcesTaskAndSetupTaskDependencies(Project project) {
+    project.tasks.register('generateSources').configure { t ->
+      group 'build'
+      description 'This task executes devkit AgentCompiler to generate sources based on agent-definition.xml'
+      dependsOn 'copyDependencies'
+      finalizedBy 'generatePermissions'
+      outputs.dir("${project.buildDir}/tooling/java-gen")
+    }
+
+    project.tasks.named('classes').configure { t ->
+      dependsOn 'generateSources', 'generatePermissions'
     }
 
     project.tasks.named('compileJava').configure { t ->
-      dependsOn 'generatePermissions'
+      dependsOn 'generateSources', 'generatePermissions'
+    }
+
+    project.tasks.named('sourcesJar').configure {t ->
+      dependsOn 'generateSources'
     }
 
     project.afterEvaluate {
-      if (project.tasks.findByName('generateSources') != null) {
-        project.tasks.named('compileJava').configure {
-          dependsOn 'generateSources'
-        }
-
-        project.tasks.named('sourcesJar').configure {
-          dependsOn 'generateSources'
-        }
-
-        project.tasks.named('generateSources').configure {
+      if (project.tasks.findByName('createGartridge') != null) {
+        project.tasks.named('createGartridge').configure {t ->
           dependsOn 'copyDependencies'
-          finalizedBy 'generatePermissions'
         }
       }
 
-      if (project.tasks.findByName('createGartridge') != null) {
-        project.tasks.named('createGartridge').configure {
-          dependsOn 'copyDependencies'
+      if (project.tasks.findByName('generator') != null) {
+        project.tasks.named('generateSources').configure {t ->
+          dependsOn 'generator'
         }
       }
     }
   }
 
-  private static void setupTasksDependenciesIfCreatingCartridge(Project project) {
+  private void setupTasksDependenciesIfCreatingCartridge(Project project) {
     project.afterEvaluate {
       if (project.tasks.findByName('createCartridge') != null) {
         for (taskName in ['build', 'startScripts', 'distTar', 'distZip', 'generateMetadataFileForMavenJavaPublication']) {
-          project.tasks.named(taskName).configure {
-            dependsOn 'createCartridge'
+          if (project.tasks.findByName(taskName) != null) {
+            project.tasks.named(taskName).configure { t ->
+              dependsOn 'createCartridge'
+            }
           }
         }
 
-        project.tasks.named('publish').configure {
+        project.tasks.named('publish').configure {t ->
           group 'publishing'
           dependsOn 'createCartridge'
           finalizedBy 'artifactoryPublish'
+        }
+
+        project.tasks.named('createCartridge').configure {t ->
+          group 'build'
+          description 'Creates .car file for this project'
+          outputs.file("${project.tasks.createCartridge.getOutputDir()}/${project.tasks.createCartridge.getCarName()}-${project.version}.car")
+
+          doFirst {
+            println "Building the ${project.tasks.createCartridge.getCarName()}.car BuildId ${project.foglight.getBuildId()} in ${project.tasks.createCartridge.getOutputDir()}"
+          }
+          doLast {
+            println "Finished creating car file in ${project.tasks.createCartridge.getOutputDir()}. Renaming it to ${project.tasks.createCartridge.getCarName()}-${project.version}.car"
+            project.ant.move(todir: "${project.tasks.createCartridge.getOutputDir()}", includeemptydirs: "false") {
+              fileset(dir: "${project.tasks.createCartridge.getOutputDir()}", includes: "*.car")
+              mapper(type: "glob", from: "*.car", to: "${project.tasks.createCartridge.getCarName()}-${project.version}.car")
+            }
+          }
+        }
+
+        project.publishing {
+          publications {
+            cartridge(MavenPublication) {
+              artifact "${project.tasks.createCartridge.getOutputDir()}/${project.tasks.createCartridge.getCarName()}-${project.version}.car".toString()
+            }
+          }
+        }
+
+        project.artifactory {
+          publish {
+            defaults {
+              publications('cartridge')
+              publishBuildInfo = true
+              publishPom = true
+            }
+          }
+        }
+
+        if (project.tasks.findByName('createGartridge') != null) {
+          project.tasks.named('createCartridge').configure { t ->
+            dependsOn 'createGartridge'
+          }
+        }
+      }
+    }
+  }
+
+  private static void disableUnusedTasks(Project project) {
+    project.afterEvaluate {
+      for (taskName in ['distTar', 'distZip']) {
+        if (project.tasks.findByName(taskName) != null) {
+          project.tasks.named(taskName).configure {
+            enabled = false
+          }
         }
       }
     }
